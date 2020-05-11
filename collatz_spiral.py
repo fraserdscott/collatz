@@ -30,10 +30,13 @@ def number_of_kinks(cycle):
 
 
 def numerator(lengths, a):
-    if len(lengths) == 0:
-        return 1
-
-    return a*(numerator(lengths[:-1], a)) + 2**(lengths[-1])
+    s = 0
+    for i in range(len(lengths)+1):
+        if i==len(lengths):
+            s += a**i * 2**0
+        else:
+            s += (a**i)* 2**lengths[-i-1]
+    return s
 
 
 def denominator(total, a, k):
@@ -53,59 +56,60 @@ def lol(t):
     return not (len(t) > 1 and len(set(individual_values)) == 1) and x_values_repeat(individual_values)
 
 
-def number_of_1_cycles(a, b, kink=1):
+def number_of_1_cycles_rigorous(a, b, kink=1):
     if kink != 1:
         raise("Not implemented")
 
-    return len([fac for fac in factors(b) if math.log2(fac + a).is_integer()])
-            
+    # fun fact: if (for some integer i, a divides i and b is a power of i), then this is mostly 0!
+    # the only edge case is when (for some integer x, 2**x - a == 1), which is infinitely rare
+    ns = [b//fac for fac in factors(b) if math.log2(fac + a).is_integer()]
+    return len(ns)
 
 
 def number_of_cycles(a, b, kink, mins=1, maxs=9999999):
     if a < 1 and b < 1 and kink < 1:
         raise("Parameter validation")
 
-    if kink > 1 and a % 3 == 0 and b in {3**i for i in range(1,10)}:
-        return 0
-
     #if kink==1:
-        #return number_of_1_cycles(a, b)
+    #    return number_of_1_cycles_rigorous(a, b)
     
     no_fs = no_factors[kink]
 
     # If the users bound is greater than the rigourous bound, use the rigourous bound
-    mins = max(mins, int(math.log2(a))) # There is also a better lower limit on the total but it doesnt work rn - bounf on total is at least kink
+    mins = max(mins, math.floor(math.log2(a)))
     maxs = min(maxs, kink*(math.ceil(math.log2(a+b))))
     
     denoms = {i:denominator(i, a, kink) for i in range(mins,maxs+1)}
 
-    vectors = [t for t in it.product(range(mins,maxs+1), repeat=kink) if all(i < j for i, j in zip(t, t[1:])) and lol(t)]
-
-    found = set()
     count = 0
-    #why not have total as it's own loop? might make more sense idk
-    #i guess you could precompute every loop tho
-    for t in vectors:
+    for total in range(max(mins,kink),maxs+1):
 
-        #ts left to check *kink
-        n = b*numerator(t[:-1],a)/denoms[t[-1]]
-        if b/denoms[t[-1]] > 0 and (b/denoms[t[-1]]).is_integer():
-            print(t, b/denoms[t[-1]], n)
-        # b/numen * denom is an integer. What does this take? what can numen tell us? basically denom can remove facs from b and bring it into deficit. if numen can take it out of deficit, youre good
-        # this can tell us when we're done!
-        # if its an integer just kill it then!s
-        if n > 0 and n.is_integer():
-                # Convert to tuple to make hashable and preserve order
-                cycle = tuple(find_cycle(a,b,n))
+        x = b/denominator(total, a, kink)
 
-                # Check if this cycle has same elements as found one
-                cycle_already_found = any(c in found for c in cycle)
+        if x>0:
+            vectors = [t for t in it.product(range(1,total), repeat=kink-1) if all(i < j for i, j in zip(list(t) + [total], (list(t) + [total])[1:])) and lol(list(t) + [total]) ]
 
-                if not cycle_already_found:
-                    found.add(n)
-                    count += 1
-                    if kink == 1 and count == no_fs:
-                        return count
+            # if x is a solution then all valid vectors will also be
+            if x.is_integer():
+                count += len(vectors) / kink
+                continue
+            
+            found = set()
+            for t in vectors:
+                n = round(x*numerator(t,a),10) # floating point errors
+
+                if n > 0 and n.is_integer():
+                    # Convert to tuple to make hashable and preserve order
+                    cycle = tuple(find_cycle(a,b,n))
+
+                    # Check if this cycle has same elements as found one
+                    cycle_already_found = any(c in found for c in cycle)
+
+                    if not cycle_already_found:
+                        found.add(n)
+                        count += 1
+                        if kink == 1 and count == no_fs:
+                            return count
 
     return count
 
@@ -160,15 +164,15 @@ def get_cycles(cycles, k):
 class MyTest(unittest.TestCase):
     def test(self):
         MAX_A = 200
-        MAX_B = 200
-        MAX_KINKS = 2
+        MAX_B = 10000
+        MAX_KINKS = 5
 
         for a in range(3,MAX_A,2):
             for b in range(1,MAX_B,2):
                 cycles = find_cycles(a, b)
 
                 print("a={}, b={}, cycles={}".format(a, b, len(cycles)))
-                for kink in range(1, MAX_KINKS+1):
+                for kink in range(2, MAX_KINKS+1):
                     predicted_cycles = number_of_cycles(a, b, kink, maxs=1500)
                     divided_cycles = get_cycles(cycles, kink)
 
